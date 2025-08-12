@@ -1,0 +1,10 @@
+---
+services:
+  prometheus:
+    image: "dockman-exporter:latest" #Use your specific tag
+    container_name: "dockman-exporter"
+    ports:
+      - "9910:9910"
+    volumes: #Remove one of the two volumes based on your configuration
+      - /var/run/docker.sock:/var/run/docker.sock #If running docker
+      - /var/run/user/1000/podman/podman.sock:/var/run/podman.sock #If using podman
