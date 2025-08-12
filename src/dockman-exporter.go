@@ -28,8 +28,8 @@ func findSocket() string {
 	sockets := [3]string{"/var/run/podman.sock", "/var/run/docker.sock", "/var/run/user/1000/podman/podman.sock"}
 	
 	for _, socket = range sockets {
-		log.Println(socket)
 		if _, err := os.Stat(socket); err == nil {
+			log.Printf("Socket found: %s\n",socket)
 			return socket
 		} 
 	}
