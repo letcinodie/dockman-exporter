@@ -1,0 +1,16 @@
+build_code:
+  image: golang:1.24.6
+  tags:
+    - cloud
+  script:
+    - go build -o build/dockman-exporter src/dockman-exporter.go
+
+build_container:
+  image: quay.io/buildah/stable
+  before_script:
+    - buildah login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" $CI_REGISTRY
+  tags:
+    - podman
+  script:
+    - buildah build -t $IMAGE_TAG .
+    - buildah push
