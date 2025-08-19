@@ -15,11 +15,12 @@ import (
 
 //Variables to store Docker/Podman API json
 type Json map[string]interface{}
-type DockerImages []Json
+type DockerAPI []Json
 
 //Prometheus specific struct
-type dockerImageCollector struct {
+type dockerInfoCollector struct {
 	dockerImageMetric *prometheus.Desc
+	dockerContainerState *prometheus.Desc
 }
 
 //Find if docker or podman is used
@@ -37,10 +38,45 @@ func findSocket() string {
 	return socket
 }
 
-//Connect to socket and trigger.
-//At the moment we only request /images/json
+//Connect to socket and trigger requests.
 //To be expanded
-func getImageList(socket string) DockerImages {
+func getContainerList(socket string) DockerAPI {
+	uri := "/containers/json?all=true"
+
+	httpc := http.Client{
+		Transport: &http.Transport{
+			DialContext: func(_ context.Context, _, _ string) (net.Conn, error) {
+				return net.Dial("unix", socket)
+			},
+		},
+	}
+
+	var response *http.Response
+	var err error
+	//List images
+	response, err = httpc.Get("http://unix" + uri)
+
+	if err != nil {
+		log.Fatal(err)
+	}
+	var containersJson DockerAPI
+	if response.StatusCode == 200 {
+		
+		body, err := io.ReadAll(response.Body)
+		if err != nil {
+			log.Fatal(err)
+		}
+
+		
+		if err := json.Unmarshal([]byte(body), &containersJson); err != nil {
+        	log.Fatal(err)
+    	}
+		
+	}
+	return containersJson
+}
+
+func getImageList(socket string) DockerAPI {
 	uri := "/images/json"
 
 	httpc := http.Client{
@@ -59,7 +95,7 @@ func getImageList(socket string) DockerImages {
 	if err != nil {
 		log.Fatal(err)
 	}
-	var imagesJson DockerImages
+	var imagesJson DockerAPI
 	if response.StatusCode == 200 {
 		
 
@@ -120,27 +156,34 @@ func getHostname(socket string) string {
 
 
 //I barely understand how this works
-func newDockerImageCollector() *dockerImageCollector {
-	return &dockerImageCollector{
+func newDockerImageCollector() *dockerInfoCollector {
+	return &dockerInfoCollector{
 		dockerImageMetric: prometheus.NewDesc("docker_image_size", "Docker Image Size in bytes.",
 			[]string{"hostname","docker_image_name", "docker_image_tag","docker_image_id"}, nil,
+		),
+		dockerContainerState: prometheus.NewDesc("docker_container_running_state", "Docker Running Container State. (-1=unknown,0=created,1=initialized,2=running,3=stopped,4=paused,5=exited,6=removing,7=stopping)",
+			[]string{"container_name", "docker_image_name", "docker_image_id", "hostname"}, nil,
 		),
 	}
 }
 
-func (collector *dockerImageCollector) Describe(ch chan<- *prometheus.Desc) {
+func (collector *dockerInfoCollector) Describe(ch chan<- *prometheus.Desc) {
 	ch <- collector.dockerImageMetric
+	ch <- collector.dockerContainerState
 }
 
-func (collector *dockerImageCollector) Collect(ch chan<- prometheus.Metric) {
+func (collector *dockerInfoCollector) Collect(ch chan<- prometheus.Metric) {
 	var imageName string
 	var imageTag string
+	var containerName string
+	var containerState float64
 	var hostname string
 	socket := findSocket()
-	json := getImageList(socket)
+	imagesJson := getImageList(socket)
+	containersJson := getContainerList(socket)
 	hostname = getHostname(socket)
 	
-	for _, image := range json {
+	for _, image := range imagesJson {
 		if len(image["RepoTags"].([]interface{})) != 0 {
 			img := image["RepoTags"].([]interface{})[0].(string)
 			imageName = strings.Split(img, ":")[0]
@@ -152,11 +195,41 @@ func (collector *dockerImageCollector) Collect(ch chan<- prometheus.Metric) {
 			imageTag = "none"
 
 		}
-		imageId := string(image["Id"].(string))
-		imageSize := float64(image["Size"].(float64))
+		imageId := image["Id"].(string)
+		imageSize := image["Size"].(float64)
 		m1 := prometheus.MustNewConstMetric(collector.dockerImageMetric, prometheus.GaugeValue, imageSize, hostname, imageName, imageTag, imageId )
 		ch <- m1
 	}
+
+	for _, container := range containersJson {
+		//status=(-1=unknown,0=created,1=initialized,2=running,3=stopped,4=paused,5=exited,6=removing,7=stopping)
+		containerName = container["Names"].([]interface{})[0].(string)
+		containerName = strings.Split(containerName, "/")[1]
+		if container["State"].(string) == "unknown" {
+			containerState = -1
+		} else if container["State"].(string) == "created" {
+			containerState = 0
+		} else if container["State"].(string) == "initialized" {
+			containerState = 1
+		} else if container["State"].(string) == "running" {
+			containerState = 2
+		} else if container["State"].(string) == "stopped" {
+			containerState = 3
+		} else if container["State"].(string) == "paused" {
+			containerState = 4
+		} else if container["State"].(string) == "exited" {
+			containerState = 5
+		} else if container["State"].(string) == "removing" {
+			containerState = 6
+		} else if container["State"].(string) == "stopping" {
+			containerState = 7
+		}
+		imageName = container["Image"].(string)
+		imageId := container["ImageID"].(string)
+		m2 := prometheus.MustNewConstMetric(collector.dockerContainerState, prometheus.GaugeValue, containerState, containerName, imageName, imageId, hostname )
+		ch <- m2
+	}
+
 }
 
 func main() {
