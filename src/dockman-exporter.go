@@ -14,8 +14,10 @@ import (
 )
 
 //Variables to store Docker/Podman API json
-type Json map[string]interface{}
-type DockerAPI []Json
+type Json map[string]interface{} //json{}
+type DockerAPI []Json //json[{}]
+
+var socket = findSocket()
 
 //Prometheus specific struct
 type dockerInfoCollector struct {
@@ -23,19 +25,30 @@ type dockerInfoCollector struct {
 	dockerContainerState *prometheus.Desc
 }
 
+//Connect to socket
+func connectSocket(socket string) http.Client {
+	return http.Client{
+		Transport: &http.Transport{
+			DialContext: func(_ context.Context, _, _ string) (net.Conn, error) {
+				return net.Dial("unix", socket)
+			},
+		},
+	}
+}
+
 //Find if docker or podman is used
 func findSocket() string {
-	var socket string
+	var sock string
 	sockets := [3]string{"/var/run/podman.sock", "/var/run/docker.sock", "/var/run/user/1000/podman/podman.sock"}
 	
-	for _, socket = range sockets {
-		if _, err := os.Stat(socket); err == nil {
-			log.Printf("Socket found: %s\n",socket)
-			return socket
+	for _, sock = range sockets {
+		if _, err := os.Stat(sock); err == nil {
+			log.Printf("Socket found: %s\n",sock)
+			return sock
 		} 
 	}
 	log.Fatal("No Podman or Docker socket found!")
-	return socket
+	return sock 
 }
 
 //Connect to socket and trigger requests.
@@ -43,13 +56,7 @@ func findSocket() string {
 func getContainerList(socket string) DockerAPI {
 	uri := "/containers/json?all=true"
 
-	httpc := http.Client{
-		Transport: &http.Transport{
-			DialContext: func(_ context.Context, _, _ string) (net.Conn, error) {
-				return net.Dial("unix", socket)
-			},
-		},
-	}
+	httpc := connectSocket(socket)
 
 	var response *http.Response
 	var err error
@@ -79,13 +86,7 @@ func getContainerList(socket string) DockerAPI {
 func getImageList(socket string) DockerAPI {
 	uri := "/images/json"
 
-	httpc := http.Client{
-		Transport: &http.Transport{
-			DialContext: func(_ context.Context, _, _ string) (net.Conn, error) {
-				return net.Dial("unix", socket)
-			},
-		},
-	}
+	httpc := connectSocket(socket)
 
 	var response *http.Response
 	var err error
@@ -110,20 +111,14 @@ func getImageList(socket string) DockerAPI {
     	}
 		
 	}
-
 	return imagesJson
 }
 
+//Not really needed as can be labeled directly on prometheus
 func getHostname(socket string) string {
 	uri := "/info"
 
-	httpc := http.Client{
-		Transport: &http.Transport{
-			DialContext: func(_ context.Context, _, _ string) (net.Conn, error) {
-				return net.Dial("unix", socket)
-			},
-		},
-	}
+	httpc := connectSocket(socket)
 
 	var response *http.Response
 	var err error
@@ -150,13 +145,12 @@ func getHostname(socket string) string {
 		hostname = infoJson["Name"].(string)
 		
 	}
-
 	return hostname
 }
 
 
 //I barely understand how this works
-func newDockerImageCollector() *dockerInfoCollector {
+func newDockerMetricsCollector() *dockerInfoCollector {
 	return &dockerInfoCollector{
 		dockerImageMetric: prometheus.NewDesc("docker_image_size", "Docker Image Size in bytes.",
 			[]string{"hostname","docker_image_name", "docker_image_tag","docker_image_id"}, nil,
@@ -178,7 +172,6 @@ func (collector *dockerInfoCollector) Collect(ch chan<- prometheus.Metric) {
 	var containerName string
 	var containerState float64
 	var hostname string
-	socket := findSocket()
 	imagesJson := getImageList(socket)
 	containersJson := getContainerList(socket)
 	hostname = getHostname(socket)
@@ -233,8 +226,8 @@ func (collector *dockerInfoCollector) Collect(ch chan<- prometheus.Metric) {
 }
 
 func main() {
-	dockerImageSize := newDockerImageCollector()
-	prometheus.MustRegister(dockerImageSize)
+	dockerMetrics := newDockerMetricsCollector()
+	prometheus.MustRegister(dockerMetrics)
 
     http.Handle("/metrics", promhttp.Handler())
     http.ListenAndServe(":9910", nil)
