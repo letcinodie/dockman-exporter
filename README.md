@@ -1,6 +1,8 @@
 # dockman-exporter
 Playing around with Go, Prometheus, Docker and Podman
 
+(Dockman is a portmanteau of Docker and Podman.)
+
 **DISCLAIMER: I'm not a developer. I play around with code to learn. This is most likely bad code and not up to standard.**
 
 # Build
