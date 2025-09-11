@@ -175,18 +175,24 @@ func (collector *dockerInfoCollector) Collect(ch chan<- prometheus.Metric) {
 	imagesJson := getImageList(socket)
 	containersJson := getContainerList(socket)
 	hostname = getHostname(socket)
-	
+
 	for _, image := range imagesJson {
-		if len(image["RepoTags"].([]interface{})) != 0 {
-			img := image["RepoTags"].([]interface{})[0].(string)
+		if slice, ok := image["RepoTags"].([]interface{}); ok {
+			if len(slice) != 0 { 
+				img := image["RepoTags"].([]interface{})[0].(string)
+				imageName = strings.Split(img, ":")[0]
+				imageTag = strings.Split(img, ":")[1]
+			}
+		} else if slice, ok := image["RepoDigests"].([]interface{}); ok {
+			if len(slice) != 0 { 
+				img := image["RepoDigests"].([]interface{})[0].(string)
+				imageName = strings.Split(img, "@")[0]
+				imageTag = "none"
+			}
+		} else if len(image["History"].([]interface{})) != 0 {
+			img := image["History"].([]interface{})[0].(string)
 			imageName = strings.Split(img, ":")[0]
 			imageTag = strings.Split(img, ":")[1]
-
-		} else if len(image["RepoDigests"].([]interface{})) != 0 {
-			img := image["RepoDigests"].([]interface{})[0].(string)
-			imageName = strings.Split(img, "@")[0]
-			imageTag = "none"
-
 		}
 		imageId := image["Id"].(string)
 		imageSize := image["Size"].(float64)
