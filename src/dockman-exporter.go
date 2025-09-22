@@ -18,6 +18,7 @@ type Json map[string]interface{} //json{}
 type DockerAPI []Json //json[{}]
 
 var socket = findSocket()
+var httpc = connectSocket(socket)
 
 //Prometheus specific struct
 type dockerInfoCollector struct {
@@ -53,10 +54,8 @@ func findSocket() string {
 
 //Connect to socket and trigger requests.
 //To be expanded
-func getContainerList(socket string) DockerAPI {
+func getContainerList(httpc http.Client) DockerAPI {
 	uri := "/containers/json?all=true"
-
-	httpc := connectSocket(socket)
 
 	var response *http.Response
 	var err error
@@ -83,10 +82,9 @@ func getContainerList(socket string) DockerAPI {
 	return containersJson
 }
 
-func getImageList(socket string) DockerAPI {
-	uri := "/images/json"
+func getImageList(httpc http.Client) DockerAPI {
 
-	httpc := connectSocket(socket)
+	uri := "/images/json"
 
 	var response *http.Response
 	var err error
@@ -115,10 +113,8 @@ func getImageList(socket string) DockerAPI {
 }
 
 //Not really needed as can be labeled directly on prometheus
-func getHostname(socket string) string {
+func getHostname(httpc http.Client) string {
 	uri := "/info"
-
-	httpc := connectSocket(socket)
 
 	var response *http.Response
 	var err error
@@ -172,23 +168,19 @@ func (collector *dockerInfoCollector) Collect(ch chan<- prometheus.Metric) {
 	var containerName string
 	var containerState float64
 	var hostname string
-	imagesJson := getImageList(socket)
-	containersJson := getContainerList(socket)
-	hostname = getHostname(socket)
+	imagesJson := getImageList(httpc)
+	containersJson := getContainerList(httpc)
+	hostname = getHostname(httpc)
 
 	for _, image := range imagesJson {
-		if slice, ok := image["RepoTags"].([]interface{}); ok {
-			if len(slice) != 0 { 
-				img := image["RepoTags"].([]interface{})[0].(string)
-				imageName = strings.Split(img, ":")[0]
-				imageTag = strings.Split(img, ":")[1]
-			}
-		} else if slice, ok := image["RepoDigests"].([]interface{}); ok {
-			if len(slice) != 0 { 
-				img := image["RepoDigests"].([]interface{})[0].(string)
-				imageName = strings.Split(img, "@")[0]
-				imageTag = "none"
-			}
+		if slice, ok := image["RepoTags"].([]interface{}); ok && len(slice) != 0 { 
+			img := image["RepoTags"].([]interface{})[0].(string)
+			imageName = strings.Split(img, ":")[0]
+			imageTag = strings.Split(img, ":")[1]
+		} else if slice, ok := image["RepoDigests"].([]interface{}); ok && len(slice) != 0 { 
+			img := image["RepoDigests"].([]interface{})[0].(string)
+			imageName = strings.Split(img, "@")[0]
+			imageTag = "none"
 		} else if len(image["History"].([]interface{})) != 0 {
 			img := image["History"].([]interface{})[0].(string)
 			imageName = strings.Split(img, ":")[0]
