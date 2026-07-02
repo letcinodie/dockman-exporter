@@ -6,7 +6,7 @@ build_code:
   stage: compile
   image: golang:1.24.6
   tags:
-    - cloud
+    - mpcdf-shared
   script:
     - go build -o build/dockman-exporter src/dockman-exporter.go
   artifacts:
@@ -24,7 +24,7 @@ build_container:
   before_script:
     - buildah login -u "$CI_REGISTRY_USER" -p "$CI_REGISTRY_PASSWORD" $CI_REGISTRY
   tags:
-    - podman
+    - image-builder
   script:
     - buildah build -t $IMAGE_TAG .
     - buildah push $IMAGE_TAG
