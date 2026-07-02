@@ -181,10 +181,10 @@ func (collector *dockerInfoCollector) Collect(ch chan<- prometheus.Metric) {
 			img := image["RepoDigests"].([]interface{})[0].(string)
 			imageName = strings.Split(img, "@")[0]
 			imageTag = "none"
-		} else if len(image["History"].([]interface{})) != 0 {
+/*		} else if len(image["History"].([]interface{})) != 0 {
 			img := image["History"].([]interface{})[0].(string)
 			imageName = strings.Split(img, ":")[0]
-			imageTag = strings.Split(img, ":")[1]
+			imageTag = strings.Split(img, ":")[1]  */
 		}
 		imageId := image["Id"].(string)
 		imageSize := image["Size"].(float64)
