@@ -6,9 +6,13 @@ build_code:
   stage: compile
   image: golang:1.24.6
   tags:
-    - mpcdf-shared
+    - debug
   script:
     - go build -o build/dockman-exporter src/dockman-exporter.go
+  cache:
+    key: dockman-exporter-debug
+    paths:
+      - build/
   artifacts:
     paths:
       - build/dockman-exporter
